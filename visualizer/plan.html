@@ -1,0 +1,147 @@
+<!doctype html>
+
+<meta charset="utf-8">
+<title>Dagre D3</title>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+
+<script src="js/d3.v3.min.js" charset="utf-8"></script>
+<script type="text/javascript" src="js/dagre-d3.js"></script>
+<script type="text/javascript" src="plan.json"></script>
+
+<h1>Samza Plan Viewer</h1>
+
+<style id="css">
+  /* This sets the color for "TK" nodes to a light blue green. */
+  g.type-TK > rect {
+    fill: #00ffd0;
+  }
+
+  body {
+  font: 300 14px 'Helvetica Neue', Helvetica;
+}
+
+.node rect,
+.node circle,
+.node ellipse {
+    stroke: #999;
+    fill: #fff;
+    stroke-width: 1.5px;
+  }
+
+  .edgePath path {
+    stroke: #333;
+    stroke-width: 1.5px;
+  }
+
+  .topbar {
+    text-align: center;
+    border-bottom: solid;
+    border-bottom-color: #cdcfd2;
+    border-bottom-width: 1px;
+  }
+  
+  .detailBox{
+    margin-top: -10px;
+  }
+</style>
+
+<section>
+  <p>An example of visualizing the tokenization of a sentence. This example shows
+    how CSS classes can be applied to a rendered graph.
+</section>
+
+<svg id="svg-canvas" width=1200 height=1000><g/></svg>
+
+<script id="js">
+
+  function jsonToDagre(data) {
+    // Create the input graph
+    var g = new dagreD3.graphlib.Graph()
+        .setGraph({
+          rankdir: "LR"
+        })
+        .setDefaultEdgeLabel(function() { return {}; });
+
+    var streams = data.Streams;
+    for (var streamId in streams) {
+      var stream = streams[streamId];
+      var labelVal = "<div><h3 class=\"topbar\">" + stream.StreamSpec.Id + "</h3><ul class=\"detailBox\" >"
+      labelVal += "<li>SystemName: " + stream.StreamSpec.SystemName + "</li>"
+      labelVal += "<li>PhysicalName: " + stream.StreamSpec.PhysicalName + "</li>"
+      labelVal += "<li>PartitionCount: " + stream.StreamSpec.PartitionCount + "</li>"
+      labelVal += "</ul></div>"
+      
+      
+      g.setNode(streamId,  { label: labelVal, labelType: "html", shape: "ellipse" });
+    }
+
+    var jobs = data.Jobs;
+    for (var i = 0; i < jobs.length; i++) {
+      var operators = jobs[i].OperatorGraph.Operators;
+      for (var opId in operators) {
+        var operator = operators[opId];
+        var labelVal = "<div><h3 class=\"topbar\">" + operator.OpCode + "</h3><ul class=\"detailBox\">";
+        labelVal +=  "<li>ID: " + operator.OpId + "</li>"
+        labelVal +=  "<li>@" + operator.Invoker + "</li>"
+        labelVal += "</ul></div>"
+        g.setNode(opId,  { label: labelVal, labelType: "html", rx: 5, ry: 5 });
+      }
+    }
+
+    for (var i = 0; i < jobs.length; i++) {
+      var inputs = jobs[i].OperatorGraph.InputStreams;
+      for (var k = 0; k < inputs.length; k++) {
+        var input = inputs[k];
+        for (var m = 0; m < input.NextOperatorIds.length; m++) {
+          g.setEdge(input.StreamId, input.NextOperatorIds[m].toString());
+        }
+      }
+
+      var operators = jobs[i].OperatorGraph.Operators;
+      for (var opId in operators) {
+        var operator = operators[opId];
+        for (var j = 0; j < operator.NextOperatorIds.length; j++) {
+          g.setEdge(opId, operator.NextOperatorIds[j].toString());
+        }
+        if (operator.OutputStreamId !== null) {
+          g.setEdge(opId, operator.OutputStreamId);
+        }
+      }
+    }
+
+    return g;
+  }
+
+
+  var json = JSON.parse(plan);
+  var g = jsonToDagre(json);
+
+
+
+  // Set up an SVG group so that we can translate the final graph.
+  var svg = d3.select("svg"),
+      inner = svg.select("g");
+
+// Set up zoom support
+var zoom = d3.behavior.zoom().on("zoom", function() {
+      inner.attr("transform", "translate(" + d3.event.translate + ")" +
+                                  "scale(" + d3.event.scale + ")");
+    });
+svg.call(zoom);
+
+  // Create the renderer
+  var render = new dagreD3.render();
+
+  // Run the renderer. This is what draws the final graph.
+  render(inner, g);
+
+// Center the graph
+var initialScale = 0.75;
+zoom
+  //.translate([(svg.attr("width") - g.graph().width * initialScale) / 2, 20])
+  .scale(initialScale)
+  .event(svg);
+svg.attr('height', g.graph().height * initialScale + 40);
+</script>
+
+</script>
