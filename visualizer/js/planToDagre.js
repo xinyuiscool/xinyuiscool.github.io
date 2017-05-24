@@ -25,59 +25,64 @@ function planToDagre(data) {
       })
       .setDefaultEdgeLabel(function() { return {}; });
 
-  var allStreams = [data.SourceStreams, data.SinkStreams, data.IntermediateStreams];
+  var allStreams = [data.sourceStreams, data.sinkStreams, data.intermediateStreams];
   var streamClasses = ["source", "sink", "intermediate"];
   for (var i = 0; i < allStreams.length; i++) {
     var streams = allStreams[i];
     for (var streamId in streams) {
       var stream = streams[streamId];
-      var labelVal = "<div><h3 class=\"topbar\">" + stream.StreamSpec.Id + "</h3><ul class=\"detailBox\" >"
-      labelVal += "<li>SystemName: " + stream.StreamSpec.SystemName + "</li>"
-      labelVal += "<li>PhysicalName: " + stream.StreamSpec.PhysicalName + "</li>"
-      labelVal += "<li>PartitionCount: " + stream.StreamSpec.PartitionCount + "</li>"
+      var labelVal = "<div><h3 class=\"topbar\">" + stream.streamSpec.id + "</h3><ul class=\"detailBox\" >"
+      labelVal += "<li>SystemName: " + stream.streamSpec.systemName + "</li>"
+      labelVal += "<li>PhysicalName: " + stream.streamSpec.physicalName + "</li>"
+      labelVal += "<li>PartitionCount: " + stream.streamSpec.partitionCount + "</li>"
       labelVal += "</ul></div>"
       g.setNode(streamId,  { label: labelVal, labelType: "html", shape: "ellipse", class: streamClasses[i] });
     }
   }
 
-  var canonicalId = {};
-  var jobs = data.Jobs;
+  var jobs = data.jobs;
   for (var i = 0; i < jobs.length; i++) {
-    var operators = jobs[i].OperatorGraph.Operators;
+    var canonicalOpIds = jobs[i].operatorGraph.canonicalOpIds;
+    var operators = jobs[i].operatorGraph.operators;
     for (var opId in operators) {
       var operator = operators[opId];
-      var labelVal = "<div><h3 class=\"topbar\">" + operator.OpCode + "</h3><ul class=\"detailBox\">";
-      var opId = operator.OpId;
-      if (parseInt(operator.PairedOpId) != -1) {
-        opId = parseInt(operator.OpId) < parseInt(operator.PairedOpId)?
-            (operator.OpId + "," + operator.PairedOpId) :
-            (operator.PairedOpId + "," + operator.OpId);
+      var labelVal = "<div><h3 class=\"topbar\">" + operator.opCode + "</h3><ul class=\"detailBox\">";
+      var opId = operator.opId;
+      if (!(opId in canonicalOpIds)) {
+        canonicalOpIds[opId] = opId.toString();
       }
-      canonicalId[operator.OpId] = opId;
       labelVal +=  "<li>ID: " + opId + "</li>";
-      labelVal +=  "<li>@" + operator.Invoker + "</li>";
+      labelVal +=  "<li>@" + operator.sourceLocation + "</li>";
+
+      var keys = ["opId", "opCode", "sourceLocation", "outputStreamId", "nextOperatorIds"];
+      for (var key in operator) {
+        if (keys.indexOf(key) === -1) {
+          labelVal += "<li>" + key + ": " + operator[key] + "</li>";
+        }
+      }
+
       labelVal += "</ul></div>";
-      g.setNode(opId,  { label: labelVal, labelType: "html", rx: 5, ry: 5 });
+      g.setNode(canonicalOpIds[opId],  { label: labelVal, labelType: "html", rx: 5, ry: 5 });
     }
   }
 
   for (var i = 0; i < jobs.length; i++) {
-    var inputs = jobs[i].OperatorGraph.InputStreams;
+    var inputs = jobs[i].operatorGraph.inputStreams;
     for (var k = 0; k < inputs.length; k++) {
       var input = inputs[k];
-      for (var m = 0; m < input.NextOperatorIds.length; m++) {
-        g.setEdge(input.StreamId, canonicalId[input.NextOperatorIds[m].toString()]);
+      for (var m = 0; m < input.nextOperatorIds.length; m++) {
+        g.setEdge(input.streamId, canonicalOpIds[input.nextOperatorIds[m]]);
       }
     }
 
-    var operators = jobs[i].OperatorGraph.Operators;
+    var operators = jobs[i].operatorGraph.operators;
     for (var opId in operators) {
       var operator = operators[opId];
-      for (var j = 0; j < operator.NextOperatorIds.length; j++) {
-        g.setEdge(canonicalId[opId], canonicalId[operator.NextOperatorIds[j].toString()]);
+      for (var j = 0; j < operator.nextOperatorIds.length; j++) {
+        g.setEdge(canonicalOpIds[opId], canonicalOpIds[operator.nextOperatorIds[j]]);
       }
-      if (operator.OutputStreamId !== null) {
-        g.setEdge(canonicalId[opId], operator.OutputStreamId);
+      if (typeof(operator.outputStreamId) !== 'undefined') {
+        g.setEdge(canonicalOpIds[opId], operator.outputStreamId);
       }
     }
   }
